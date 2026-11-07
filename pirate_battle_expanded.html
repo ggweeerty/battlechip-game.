@@ -1,0 +1,450 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>Морской бой — HiBy R1 · версия 5</title>
+<style>
+*{box-sizing:border-box;touch-action:manipulation}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#061522;color:#eef7fb;font-family:system-ui,Arial,sans-serif}
+#app{height:100dvh;width:100vw;display:flex;flex-direction:column;gap:5px;padding:6px;max-width:480px;margin:auto}
+#stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:5px;flex:0 0 auto}
+.stat{background:#102b3d;border:1px solid #31536a;border-radius:7px;text-align:center;padding:4px 2px;font-size:11px}
+.stat b{display:block;font-size:17px}
+#bossline{display:flex;justify-content:space-between;font-size:11px;padding:0 3px}
+#hpwrap{height:6px;background:#34495a;border-radius:8px;overflow:hidden;flex:0 0 auto}
+#hp{height:100%;width:100%;background:#eab64d}
+#gamewrap{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;overflow:hidden}
+canvas{display:block;height:100%;width:auto;max-width:100%;aspect-ratio:480/800;object-fit:contain;background:#092b40;border:1px solid #31536a;border-radius:5px}
+#controls{display:grid;grid-template-columns:1fr 1.25fr 1fr;gap:6px;flex:0 0 auto}
+button{border:1px solid #56819a;border-radius:8px;background:#17435a;color:white;font-size:16px;font-weight:700;padding:12px 3px;min-height:48px}
+button:active{background:#28718d}
+#info{font-size:10px;display:flex;justify-content:space-between;color:#b9d0dc;flex:0 0 auto}
+#message{font-size:10px;text-align:center;min-height:14px;color:#b9d0dc;flex:0 0 auto}
+#toast{position:fixed;z-index:20;left:50%;top:12px;transform:translate(-50%,-8px);
+display:none;max-width:min(88vw,340px);padding:7px 12px;border:1px solid #b58d4c;
+border-radius:18px;background:rgba(4,20,31,.88);color:#ffe2a0;text-align:center;
+font-size:12px;font-weight:750;box-shadow:0 3px 14px #0008;pointer-events:none}
+#toast.show{display:block;animation:toastIn .14s ease-out}
+@keyframes toastIn{from{opacity:0;transform:translate(-50%,-14px)}to{opacity:1;transform:translate(-50%,-8px)}}
+#bottom{display:flex;gap:6px;flex:0 0 auto}
+#bottom button{flex:1;font-size:12px;min-height:36px;padding:7px}
+#bottom button.music-on{border-color:#eab64d;color:#ffe2a0}
+@media (orientation:landscape){#app{max-width:100vw;flex-direction:row;flex-wrap:wrap;align-items:stretch}#stats{width:100%}#bossline,#hpwrap{width:100%}#gamewrap{height:calc(100dvh - 145px);flex:1}#controls{width:120px;display:flex;flex-direction:column;justify-content:center}#info,#message,#bottom{width:100%}}
+
+#metaActions{display:grid;grid-template-columns:repeat(3,1fr);gap:5px;flex:0 0 auto}
+#metaActions button{font-size:11px;min-height:34px;padding:6px 2px}
+#metaModal{display:none;position:fixed;inset:0;z-index:50;background:rgba(1,10,18,.88);align-items:center;justify-content:center;padding:14px}
+#metaModal.open{display:flex}
+#metaPanel{width:min(100%,440px);max-height:88dvh;overflow:auto;background:#0c2638;border:1px solid #a98249;border-radius:14px;padding:14px;box-shadow:0 12px 40px #000b}
+#metaPanel h2{font-size:19px;margin:0 0 10px;color:#ffe0a0}
+#metaPanel p{font-size:12px;color:#c3d7e1}
+.metaRow{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;border-bottom:1px solid #29485a;font-size:13px}
+.metaRow button,.metaClose{font-size:12px;min-height:34px;padding:6px 10px}
+.metaClose{width:100%;margin-top:12px}
+.metaMuted{color:#9bb6c5;font-size:11px}
+.metaGold{color:#ffd477;font-weight:800}
+#weatherTint{pointer-events:none}
+@media(max-height:650px){#metaActions button{min-height:29px;padding:4px}#bottom button{min-height:31px}}
+
+</style>
+</head>
+<body>
+<div id="toast"></div><div id="app">
+ <div id="stats">
+  <div class="stat">УРОВЕНЬ<b id="level">1</b></div>
+  <div class="stat">СЧЁТ<b id="score">0</b></div>
+  <div class="stat">ЖИЗНИ<b id="lives">3</b></div>
+  <div class="stat">РЕКОРД<b id="record">0</b></div>
+ </div>
+ <div id="bossline"><span id="bossname">Чёрный галеон</span><span id="hptext">Прочность: 100%</span></div>
+ <div id="hpwrap"><div id="hp"></div></div>
+ <div id="gamewrap"><canvas id="game" width="480" height="800"></canvas></div>
+ <div id="controls">
+  <button id="left">◀</button><button id="fire">🔥 ОГОНЬ</button><button id="right">▶</button>
+ </div>
+ <div id="info"><span id="weapons">Прямые: 1 · Веер: 0</span><span id="boost">Бустов нет</span></div>
+ <div id="message">Разрушай секции и лови редкие усиления!</div>
+ <div id="bottom"><button id="restart">ЗАНОВО</button><button id="pause">ПАУЗА</button><button id="music">♫ МУЗЫКА: ВЫКЛ</button></div>
+</div>
+<!--
+Telegram leaderboard integration:
+1) Set META_API_BASE in the script to your HTTPS backend URL.
+2) GET /api/leaderboard returns {"leaders":[{"name":"Captain","score":1234,"level":4}]}.
+3) POST /api/score receives {"score":1234,"level":4,"gold":50}; Telegram initData is sent in
+   X-Telegram-Init-Data. The backend MUST validate initData signature and user identity
+   with the bot token before accepting a score. Never trust a client-supplied username or score.
+-->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+(()=> {
+const $=id=>document.getElementById(id), canvas=$('game'),ctx=canvas.getContext('2d');
+const W=480,H=800;
+const bossStyles=[
+ {shape:'galleon',attack:'fan',label:'Чёрный галеон'},
+ {shape:'frigate',attack:'aim',label:'Королевский фрегат'},
+ {shape:'corsair',attack:'burst',label:'Алый корсар'},
+ {shape:'ghost',attack:'wave',label:'Призрачный линкор'},
+ {shape:'iron',attack:'heavy',label:'Железный дредноут'},
+ {shape:'storm',attack:'cross',label:'Штормовой разрушитель'},
+ {shape:'cutter',attack:'ram',label:'Быстрый каттер'},
+ {shape:'catamaran',attack:'double',label:'Двойной катамаран'},
+ {shape:'submarine',attack:'mine',label:'Подводный охотник'},
+ {shape:'airship',attack:'bomb',label:'Небесный дирижабль'},
+ {shape:'zeppelin',attack:'rain',label:'Грозовой цеппелин'},
+ {shape:'balloon',attack:'orb',label:'Бомбардир на шарах'},
+ {shape:'fortress',attack:'wall',label:'Плавучая крепость'},
+ {shape:'trimaran',attack:'trident',label:'Трёхкорпусный тримаран'},
+ {shape:'shark',attack:'chomp',label:'Акулий рейдер'},
+ {shape:'crab',attack:'claw',label:'Краб-дредноут'},
+ {shape:'spider',attack:'web',label:'Паучий крейсер'},
+ {shape:'dragon',attack:'flame',label:'Морской дракон'},
+ {shape:'viking',attack:'axe',label:'Викингский крушитель'},
+ {shape:'carrier',attack:'squadron',label:'Авианосец-призрак'}
+];
+const colors=['#35485b','#b18a43','#a83d3d','#9294b5','#71818b','#348d91','#b45d32','#448d9c','#586d83','#b3a35c','#6b82a5','#b96f42','#737d83','#4e9c8d','#8c4b42','#9b6550','#65558f','#398b9a','#8a704c','#667b9a'];
+let player={x:240,y:735,tilt:0,invuln:0,lastDir:0,wakeAt:0},boss=null,shots=[],enemy=[],drops=[],fx=[],wake=[],level=1,score=0,lives=3,weapon=1,spread=0,paused=false,over=false,last=0,fireAt=0,nextBossAt=0,held={left:false,right:false,fire:false},keys={};
+let boostUntil=0, boostType=null, musicOn=false, audioCtx=null, musicTimer=null, musicStep=0,musicMaster=null,toastTimer=null,damageFlash=0;
+let bestScore=(()=>{try{return Math.max(0,Number(localStorage.getItem('hiby_pirate_battle_record_v1'))||0)}catch(e){return 0}})();
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function say(s){
+ const el=$('toast'); el.textContent=s; el.classList.remove('show'); void el.offsetWidth; el.classList.add('show');
+ $('message').textContent='';
+ if(toastTimer)clearTimeout(toastTimer);
+ toastTimer=setTimeout(()=>el.classList.remove('show'),1250);
+}
+function playDamageSound(){
+ try{
+  if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended')audioCtx.resume();
+  const now=audioCtx.currentTime;
+  [[105,.16,.22,'sawtooth'],[62,.22,.28,'triangle'],[760,.055,.07,'square']].forEach(([freq,dur,gain,type],i)=>{
+   const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+   o.type=type;o.frequency.setValueAtTime(freq,now);
+   if(i===0)o.frequency.exponentialRampToValueAtTime(48,now+dur);
+   if(i===2)o.frequency.exponentialRampToValueAtTime(210,now+dur);
+   g.gain.setValueAtTime(gain,now);g.gain.exponentialRampToValueAtTime(.001,now+dur);
+   o.connect(g);g.connect(audioCtx.destination);o.start(now);o.stop(now+dur);
+  });
+ }catch(e){}
+}
+function playSfx(kind){
+ try{
+  if(!audioCtx)audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended')audioCtx.resume();
+  const now=audioCtx.currentTime;
+  const presets={
+   cannon:[[170,.09,.10,'sawtooth',.48],[72,.13,.12,'triangle',.62]],
+   impact:[[125,.14,.13,'square',.35],[420,.06,.07,'triangle',1.5]],
+   pickup:[[660,.08,.08,'sine',1.25],[880,.12,.07,'sine',1.2],[1180,.15,.06,'sine',1.1]],
+   break:[[240,.12,.09,'sawtooth',.55],[160,.18,.11,'triangle',.45],[85,.24,.12,'sawtooth',.5]],
+   splash:[[330,.08,.05,'sine',.7],[220,.13,.05,'sine',.65]]
+  };
+  (presets[kind]||presets.impact).forEach(([freq,dur,gain,type,end])=>{
+   const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+   o.type=type;o.frequency.setValueAtTime(freq,now);o.frequency.exponentialRampToValueAtTime(Math.max(35,freq*end),now+dur);
+   g.gain.setValueAtTime(gain,now);g.gain.exponentialRampToValueAtTime(.001,now+dur);
+   o.connect(g);g.connect(audioCtx.destination);o.start(now);o.stop(now+dur);
+  });
+ }catch(e){}
+}
+function newBoss(){
+ const hp=3+Math.floor(level*.65),skin=(level-1)%bossStyles.length,base=bossStyles[skin];
+ const palettes=[['#8e493d','#d9a45e','#f0d7a2'],['#315f70','#8dc4c5','#d8e8d5'],['#51456f','#b18acb','#f0d5ef'],['#59634b','#b1a66b','#e6d8a5'],['#704f37','#d28a4b','#f4d2a0'],['#3e526f','#8ea8d0','#e1e9f5']];
+ const palette=palettes[Math.floor(Math.random()*palettes.length)];
+ const patterns=['fan','aim','spiral','cross','minefield','sweep','burst','rain','hunters'];
+ const brains=['stalker','weaver','bulwark','berserker'];
+ const brain=brains[Math.floor(Math.random()*brains.length)],pattern=patterns[Math.floor(Math.random()*patterns.length)];
+ const variants=['Кровавый','Штормовой','Золотой','Призрачный','Багровый','Ледяной','Проклятый'];
+ const generatedName=variants[Math.floor(Math.random()*variants.length)]+' '+base.label.toLowerCase();
+ boss={x:240,y:160,dir:Math.random()<.5?1:-1,speed:.42+Math.min(level*.075,1.35),
+ parts:Array.from({length:7},(_,i)=>({x:(i-3)*36,hp,max:hp,alive:true})),
+ fire:0,skin,style:base,dropped:false,phase:0,color:palette[0],trim:palette[1],deck:palette[2],
+ pattern,brain,moveSeed:Math.random()*Math.PI*2,moveRate:.7+Math.random()*.9,
+ armor:Math.random()<.55,ornament:Math.floor(Math.random()*4),sailCount:1+Math.floor(Math.random()*3),
+ attackSpeed:.82+Math.random()*.42,attackPower:.82+Math.random()*.4};
+ $('bossname').textContent=generatedName;say('БОСС '+level+' / 20: '+generatedName+'!');
+}
+function bossAttack(t,bx,by,v,tx,shot,fan){
+ const p=boss.pattern,phase=boss.phase,side=phase%2?1:-1;
+ if(p==='fan'){fan(5+Math.floor(Math.random()*5),.34+Math.random()*.2,v);if(phase%3===0)shot(bx,by,tx,v+.7,'heavy')}
+ else if(p==='aim'){shot(bx,by,tx*1.15,v+.45);if(phase%2===0){shot(bx-48,by,-.35,v);shot(bx+48,by,.35,v)}}
+ else if(p==='spiral'){for(let j=0;j<7;j++){const a=phase*.72+j*Math.PI*2/7;shot(bx,by,Math.cos(a)*1.65,v*.82+Math.sin(a)*.25)}}
+ else if(p==='cross'){for(let j=-2;j<=2;j++)shot(bx+j*24,by,j*.48,v);shot(bx,by,tx,v+1.1,'heavy')}
+ else if(p==='minefield'){for(let j=-2;j<=2;j++)shot(bx+j*44,by,j*.1,v*.68,'mine')}
+ else if(p==='sweep'){for(let j=0;j<8;j++){const x=side===1?35+j*58:445-j*58;shot(x,by,side*.22,v*.85,'bomb')}}
+ else if(p==='burst'){for(let k=0;k<3;k++)for(let j=-1;j<=1;j++)shot(bx+j*28,by+k*8,j*.85+tx*.25,v+k*.45)}
+ else if(p==='rain'){for(let j=0;j<7;j++)shot(55+j*62,by,Math.sin(phase+j)*.25,v*.92,'heavy')}
+ else {for(let j=-1;j<=1;j++){const x=clamp(bx+j*62+Math.sin(t/260+j)*25,35,445);shot(x,by,j*.55+tx*.3,v+.35,'hunter')}}
+}
+function burst(x,y,col){for(let i=0;i<10;i++)fx.push({x,y,vx:(Math.random()-.5)*4,vy:(Math.random()-.5)*4,life:24,col})}
+function shoot(){playSfx('cannon');let power=boostUntil>performance.now()?1.7:1;for(let i=0;i<weapon;i++){let dx=(i-(weapon-1)/2)*Math.min(24,10+weapon*1.5);shots.push({x:player.x+dx,y:player.y-27,vx:0,vy:-9,power})}for(let j=1;j<=spread;j++){let a=.22+j*.11;shots.push({x:player.x,y:player.y-27,vx:-a,vy:-8,power},{x:player.x,y:player.y-27,vx:a,vy:-8,power})}}
+function ship(x,y,s,col,tilt=0){
+ ctx.save();ctx.translate(x,y);ctx.rotate(tilt);ctx.scale(s,s);
+ // Deep wooden hull, pointed bow faces UP toward the enemy.
+ ctx.fillStyle='#101b25';ctx.beginPath();ctx.moveTo(0,-49);ctx.quadraticCurveTo(31,-25,29,20);ctx.lineTo(18,42);ctx.quadraticCurveTo(0,51,-18,42);ctx.lineTo(-29,20);ctx.quadraticCurveTo(-31,-25,0,-49);ctx.fill();
+ ctx.fillStyle='#75452e';ctx.beginPath();ctx.moveTo(0,-45);ctx.quadraticCurveTo(26,-22,24,18);ctx.lineTo(15,37);ctx.quadraticCurveTo(0,44,-15,37);ctx.lineTo(-24,18);ctx.quadraticCurveTo(-26,-22,0,-45);ctx.fill();
+ // Plank seams and edge highlights.
+ ctx.strokeStyle='#bd8050';ctx.lineWidth=2;
+ for(let yy=-25;yy<=27;yy+=11){let w=22-Math.abs(yy)*.22;ctx.beginPath();ctx.moveTo(-w,yy);ctx.quadraticCurveTo(0,yy+3,w,yy);ctx.stroke()}
+ ctx.strokeStyle='#e0b77a';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(-20,-18);ctx.quadraticCurveTo(-27,8,-14,32);ctx.moveTo(20,-18);ctx.quadraticCurveTo(27,8,14,32);ctx.stroke();
+ // Deck, mast and a black pirate sail.
+ ctx.fillStyle='#d4ad73';ctx.beginPath();ctx.ellipse(0,2,13,24,0,0,Math.PI*2);ctx.fill();
+ ctx.fillStyle='#493326';ctx.fillRect(-2,-28,4,53);
+ ctx.fillStyle='#101820';ctx.beginPath();ctx.moveTo(-2,-26);ctx.lineTo(-2,10);ctx.lineTo(19,4);ctx.lineTo(17,-19);ctx.closePath();ctx.fill();
+ ctx.fillStyle='#e7dfc8';ctx.font='bold 13px serif';ctx.textAlign='center';ctx.fillText('☠',8,-3);
+ // Tiny bow flag and stern rudder.
+ ctx.fillStyle='#d8c49b';ctx.fillRect(-1,-43,2,13);ctx.fillStyle='#b93435';ctx.beginPath();ctx.moveTo(1,-42);ctx.lineTo(13,-38);ctx.lineTo(1,-33);ctx.fill();
+ ctx.fillStyle='#38271f';ctx.fillRect(-3,35,6,12);
+ // Portholes.
+ ctx.fillStyle='#f3d18a';for(let yy=-10;yy<=22;yy+=16){ctx.beginPath();ctx.arc(-20,yy,2.2,0,Math.PI*2);ctx.arc(20,yy,2.2,0,Math.PI*2);ctx.fill()}
+ ctx.restore();
+}
+function polygon(points,fill){ctx.fillStyle=fill;ctx.beginPath();ctx.moveTo(points[0][0],points[0][1]);for(let i=1;i<points.length;i++)ctx.lineTo(points[i][0],points[i][1]);ctx.closePath();ctx.fill()}
+function drawBoss(){
+ if(!boss)return;
+ const shape=boss.style.shape,c=boss.color||colors[boss.skin];
+ ctx.save();ctx.translate(boss.x,boss.y);
+ ctx.fillStyle='#17232d';
+ // Силуэты корпусов намеренно различаются по контуру, ширине и надстройкам.
+ const hulls={
+ galleon:[[-150,0],[-120,-28],[-75,-22],[-50,-40],[75,-40],[110,-22],[150,0],[112,32],[-112,32]],
+ frigate:[[-155,-4],[-112,-26],[112,-26],[155,-4],[126,19],[-126,19]],
+ corsair:[[-145,-8],[-95,-34],[85,-25],[150,0],[75,30],[-110,20]],
+ ghost:[[-145,-18],[-112,-42],[110,-42],[145,-18],[125,26],[85,40],[-90,40],[-130,20]],
+ iron:[[-150,-28],[150,-28],[150,25],[110,40],[-110,40],[-150,25]],
+ storm:[[-160,0],[-110,-35],[110,-35],[160,0],[105,34],[-105,34]],
+ cutter:[[-155,-2],[-70,-18],[115,-18],[155,0],[95,17],[-130,13]],
+ catamaran:[[-155,-24],[-95,-24],[-75,-5],[75,-5],[95,-24],[155,-24],[130,28],[65,28],[45,8],[-45,8],[-65,28],[-130,28]],
+ submarine:[[-150,0],[-120,-18],[-65,-25],[65,-25],[120,-18],[150,0],[120,22],[-120,22]],
+ airship:[[-140,-10],[-110,-35],[-55,-48],[55,-48],[110,-35],[140,-10],[110,20],[-110,20]],
+ zeppelin:[[-155,0],[-125,-24],[-70,-39],[70,-39],[125,-24],[155,0],[125,24],[70,39],[-70,39],[-125,24]],
+ balloon:[[-100,-22],[-65,-42],[65,-42],[100,-22],[115,20],[70,35],[-70,35],[-115,20]],
+ fortress:[[-160,-25],[160,-25],[160,35],[110,35],[90,20],[-90,20],[-110,35],[-160,35]],
+ trimaran:[[-160,-22],[-120,-22],[-90,4],[90,4],[120,-22],[160,-22],[140,29],[80,29],[55,8],[-55,8],[-80,29],[-140,29]],
+ shark:[[-160,0],[-105,-30],[-25,-20],[15,-45],[55,-18],[130,-16],[160,0],[110,25],[20,18],[-55,36],[-110,20]],
+ crab:[[-105,-20],[-60,-35],[60,-35],[105,-20],[130,10],[80,30],[-80,30],[-130,10]],
+ spider:[[-100,-22],[-55,-38],[55,-38],[100,-22],[115,18],[60,34],[-60,34],[-115,18]],
+ dragon:[[-160,0],[-105,-25],[-45,-18],[0,-42],[45,-18],[105,-25],[160,0],[100,30],[0,18],[-100,30]],
+ viking:[[-150,-8],[-120,-30],[-55,-22],[0,-40],[55,-22],[120,-30],[150,-8],[115,28],[-115,28]],
+ carrier:[[-160,-22],[160,-22],[145,28],[-145,28]]
+ };
+ polygon(hulls[shape]||hulls.galleon,'#17232d');
+ polygon(hulls[shape]||hulls.galleon,c);
+ // Hand-painted hull finish: layered planks, metallic rails and rivets.
+ ctx.save();ctx.globalAlpha=.62;ctx.strokeStyle=boss.trim;ctx.lineWidth=2;
+ for(let yy=-25;yy<=25;yy+=9){ctx.beginPath();ctx.moveTo(-118,yy);ctx.quadraticCurveTo(0,yy+4,118,yy);ctx.stroke()}
+ ctx.globalAlpha=.9;ctx.strokeStyle=boss.deck;ctx.lineWidth=3;
+ ctx.beginPath();ctx.moveTo(-130,0);ctx.quadraticCurveTo(0,42,130,0);ctx.stroke();
+ for(let x=-112;x<=112;x+=28){ctx.fillStyle=boss.deck;ctx.beginPath();ctx.arc(x,18,2.5,0,Math.PI*2);ctx.fill()}
+ ctx.restore();
+ // Characteristic parts: sails, cabins, fins, rotors, gondolas, cannons.
+ ctx.fillStyle=boss.deck;ctx.strokeStyle='#392f2a';ctx.lineWidth=3;
+ if(['airship','zeppelin','balloon'].includes(shape)){
+   ctx.beginPath();ctx.ellipse(0,-17,shape==='zeppelin'?112:82,shape==='balloon'?42:30,0,0,Math.PI*2);ctx.fill();
+   ctx.fillStyle='#513b32';ctx.fillRect(-28,12,56,17);ctx.fillRect(-5,28,10,15);
+   for(let x=-65;x<=65;x+=65){ctx.fillStyle='#e6d7b5';ctx.fillRect(x-3,20,6,10)}
+ }else if(shape==='submarine'){
+   ctx.fillStyle='#d8c37c';ctx.fillRect(-18,-42,36,24);ctx.fillRect(-7,-58,14,18);
+   ctx.fillStyle='#17232d';ctx.fillRect(-95,-7,190,7);
+ }else if(shape==='shark'||shape==='dragon'){
+   polygon([[-25,-18],[0,-70],[25,-18]],'#263b4a');polygon([[55,0],[110,-38],[95,5]],'#263b4a');
+   ctx.fillStyle='#f4e7c5';for(let x=-70;x<=70;x+=28)ctx.fillRect(x,-3,8,10);
+ }else if(shape==='crab'||shape==='spider'){
+   for(let side of [-1,1])for(let i=0;i<3;i++){
+     ctx.strokeStyle=c;ctx.lineWidth=9;ctx.beginPath();ctx.moveTo(side*75,5);ctx.lineTo(side*(112+i*12),25+i*8);ctx.lineTo(side*(145+i*8),10+i*15);ctx.stroke();
+   }
+   ctx.fillStyle='#f5d28b';ctx.fillRect(-25,-45,16,16);ctx.fillRect(10,-45,16,16);
+ }else if(shape==='fortress'||shape==='carrier'){
+   ctx.fillStyle=boss.deck;ctx.fillRect(-95,-49,190,25);ctx.fillRect(-35,-67,70,18);
+   for(let x=-125;x<=125;x+=50){ctx.fillStyle='#392f2a';ctx.fillRect(x-8,-5,16,18)}
+   if(shape==='carrier'){for(let x=-75;x<=75;x+=75){ctx.fillStyle='#e8d7a7';ctx.beginPath();ctx.moveTo(x,-54);ctx.lineTo(x-13,-25);ctx.lineTo(x+13,-25);ctx.fill()}}
+ }else{
+   ctx.fillStyle=boss.deck;ctx.fillRect(-78,-48,156,18);
+   ctx.fillStyle='#684a34';ctx.fillRect(-5,-76,10,38);
+   if(shape==='galleon'||shape==='viking'||shape==='corsair'){ctx.fillStyle='#f2e5c5';ctx.fillRect(-47,-70,34,22);ctx.fillRect(15,-65,30,19)}
+   if(shape==='catamaran'||shape==='trimaran'){ctx.fillStyle='#f4dba0';ctx.fillRect(-12,-58,24,30)}
+   if(shape==='cutter'){ctx.fillStyle='#f4e5c2';ctx.fillRect(-20,-53,40,30)}
+   if(shape==='ghost'){ctx.globalAlpha=.55;ctx.fillStyle='#c5e7f2';ctx.fillRect(-130,-24,260,42);ctx.globalAlpha=1}
+   if(shape==='storm'){ctx.fillStyle='#d9edee';polygon([[-8,-75],[0,-92],[8,-75]],'#d9edee')}
+ }
+ // Procedurally varied sails, pennants and armor plating.
+ if(!['airship','zeppelin','balloon','submarine','shark','dragon','crab','spider'].includes(shape)){
+  for(let i=0;i<boss.sailCount;i++){
+   const sx=(i-(boss.sailCount-1)/2)*48;
+   ctx.fillStyle=boss.ornament%2?'#26313b':'#eee0c4';
+   ctx.beginPath();ctx.moveTo(sx,-47);ctx.lineTo(sx-17,-12);ctx.lineTo(sx+17,-12);ctx.closePath();ctx.fill();
+   ctx.strokeStyle=boss.trim;ctx.lineWidth=2;ctx.stroke();
+   ctx.fillStyle=boss.trim;ctx.font='bold 12px serif';ctx.textAlign='center';ctx.fillText(['✦','☠','⚓','◆'][boss.ornament],sx,-25);
+  }
+ }
+ if(boss.armor){ctx.strokeStyle=boss.trim;ctx.lineWidth=5;ctx.beginPath();ctx.moveTo(-135,7);ctx.lineTo(-105,28);ctx.lineTo(105,28);ctx.lineTo(135,7);ctx.stroke()}
+ // Turrets/cannons make each boss readable at a glance.
+ ctx.fillStyle='#302b2b';
+ for(let x=-105;x<=105;x+=70){ctx.fillRect(x-8,2,16,13);ctx.fillRect(x-3,10,6,17)}
+ boss.parts.forEach(p=>{if(!p.alive)return;ctx.fillStyle='#202c35';ctx.fillRect(p.x-14,-5,28,24);ctx.fillStyle=p.hp===1?'#ff7656':'#f1c979';ctx.fillRect(p.x-10,-17,20,12);ctx.fillStyle='#513b2b';ctx.fillRect(p.x-3,-27,6,12)});
+ ctx.restore();
+}
+function draw(){
+ const now=performance.now();
+ // Layered ocean colour and moving, hand-drawn wavelets.
+ const sea=ctx.createLinearGradient(0,0,0,H);sea.addColorStop(0,'#0b354d');sea.addColorStop(.55,'#082b42');sea.addColorStop(1,'#061d31');ctx.fillStyle=sea;ctx.fillRect(0,0,W,H);
+ for(let i=0;i<92;i++){
+  let x=(i*73+Math.sin(now/950+i*1.7)*17)%W,y=(i*127+now*(i%3===0?.018:.009))%H;
+  ctx.strokeStyle=i%3===0?'rgba(105,190,204,.19)':'rgba(55,132,159,.17)';ctx.lineWidth=i%4===0?2:1;
+  ctx.beginPath();ctx.moveTo(x,y);ctx.quadraticCurveTo(x+7,y-3,x+15,y);ctx.stroke();
+ }
+ // Foam trails left by the player's turns and movement.
+ wake.forEach(w=>{
+  const k=1-w.life/w.max;ctx.save();ctx.globalAlpha=Math.max(0,w.life/w.max)*.55;
+  ctx.strokeStyle='#b9f4f2';ctx.lineWidth=2;
+  ctx.beginPath();ctx.ellipse(w.x,w.y,w.r+18*k,w.r*.45+8*k,0,0,Math.PI*2);ctx.stroke();
+  ctx.beginPath();ctx.ellipse(w.x,w.y,w.r+8+22*k,w.r*.3+5*k,0,0,Math.PI*2);ctx.stroke();
+  ctx.restore();
+ });
+ if(boss)drawBoss();
+ if(player.invuln>performance.now() && Math.floor(performance.now()/90)%2===0)ctx.globalAlpha=.35;
+ ship(player.x,player.y,.9,'#55a8c5');ctx.globalAlpha=1;
+ ctx.save();ctx.globalAlpha=.32;ctx.strokeStyle=player.invuln>performance.now()?'#ff6b65':'#8debf2';ctx.lineWidth=1.2;ctx.beginPath();ctx.ellipse(player.x,player.y+5,18,24,0,0,Math.PI*2);ctx.stroke();ctx.restore();
+ shots.forEach(s=>{ctx.fillStyle='#ffe7a1';ctx.fillRect(s.x-3,s.y-9,6,15)});
+ enemy.forEach(s=>{ctx.fillStyle=s.kind==='heavy'?'#ff3c36':s.kind==='mine'?'#d88cff':s.kind==='bomb'?'#ffbd52':s.kind==='hunter'?'#b6a5ff':'#ff795a';ctx.beginPath();ctx.arc(s.x,s.y,s.kind==='heavy'?7:s.kind==='mine'?6:4,0,Math.PI*2);ctx.fill();if(s.kind==='heavy'||s.kind==='bomb'){ctx.strokeStyle='#ffe5a0';ctx.stroke()}});
+ drops.forEach(d=>{ctx.fillStyle=d.type===0?'#4bd6e5':'#ffba52';ctx.fillRect(d.x-13,d.y-13,26,26);ctx.fillStyle='#092b40';ctx.font='bold 20px monospace';ctx.fillText(d.type===0?'×':'✦',d.x-7,d.y+7)});
+ fx.forEach(p=>{ctx.fillStyle=p.col;ctx.fillRect(p.x,p.y,4,4)});
+ if(damageFlash>performance.now()){
+  const alpha=Math.min(.62,(damageFlash-performance.now())/360*.62);
+  const g=ctx.createRadialGradient(W/2,H/2,180,W/2,H/2,470);
+  g.addColorStop(0,'rgba(255,20,35,0)');
+  g.addColorStop(.58,'rgba(255,25,38,0)');
+  g.addColorStop(1,`rgba(255,15,28,${alpha})`);
+  ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+ }
+}
+function ui(){
+ if(score>bestScore){bestScore=score;try{localStorage.setItem('hiby_pirate_battle_record_v1',String(bestScore))}catch(e){}}
+ $('level').textContent=level;$('score').textContent=score;$('lives').textContent=lives;$('record').textContent=bestScore.toLocaleString('ru-RU');
+ if(boss){let max=boss.parts.reduce((a,p)=>a+p.max,0),hp=boss.parts.reduce((a,p)=>a+p.hp,0),v=Math.ceil(hp/max*100);$('hptext').textContent='Прочность: '+v+'%';$('hp').style.width=v+'%'}else{$('hptext').textContent='Следующий босс...';$('hp').style.width='0%'}$('weapons').textContent='Прямые: '+weapon+' · Веер: '+spread;let left=Math.max(0,Math.ceil((boostUntil-performance.now())/1000));$('boost').textContent=left>0?'БОНУС АТАКИ: '+left+'с':'Бустов нет'}
+function frame(t){if(!last)last=t;let dt=Math.min(35,t-last);last=t;
+ if(!paused&&!over){
+ let dir=(held.left||keys.ArrowLeft?-1:0)+(held.right||keys.ArrowRight?1:0);
+ player.x=clamp(player.x+dir*dt*.32,24,456);
+ player.tilt+=(clamp(dir,-1,1)*.22-player.tilt)*Math.min(1,dt*.012);
+ if(dir!==0 && dir!==player.lastDir){
+  for(let n=0;n<4;n++)wake.push({x:player.x-dir*(12+n*7),y:player.y+17+n*5,r:5+n*2,life:520,max:520});
+  playSfx('splash');
+ }
+ if(dir!==0 && t-player.wakeAt>75){
+  wake.push({x:player.x-dir*9,y:player.y+34,r:4,life:430,max:430});player.wakeAt=t;
+ }
+ player.lastDir=dir;
+ wake.forEach(w=>w.life-=dt);wake=wake.filter(w=>w.life>0);if(boostUntil&&t>=boostUntil){boostUntil=0;boostType=null;weapon=1;spread=0;say('Усиление атаки закончилось.')}
+ if((held.fire||keys[' '])&&t-fireAt>Math.max(125,270-weapon*17)){shoot();fireAt=t}
+ if(boss){
+ boss.moveSeed+=dt*.001*boss.moveRate;
+ const weave=Math.sin(boss.moveSeed)*(boss.brain==='weaver'?1.25:boss.brain==='stalker'?.45:.8);
+ boss.x+=boss.dir*boss.speed*dt*.06*(boss.brain==='berserker'?1.35:1)+weave*dt*.035;
+ if(boss.brain==='stalker')boss.x+=(player.x-boss.x)*dt*.00012;
+ if(boss.x>340){boss.x=340;boss.dir=-1}if(boss.x<140){boss.x=140;boss.dir=1}
+ if(Math.random()<.004+level*.00025)boss.dir*=-1;
+ boss.fire+=dt;
+ if(boss.fire>Math.max(650,(1750-level*35)*boss.attackSpeed)){
+  boss.fire=0;boss.phase++;let v=2.3+Math.min(level*.09,2.1),bx=boss.x,by=boss.y+22,tx=clamp((player.x-bx)*.004,-2.2,2.2);
+  const shot=(x,y,vx,vy,kind='normal')=>enemy.push({x,y,vx,vy,kind});
+  const fan=(count,spread,vy=v)=>{for(let j=0;j<count;j++){let q=(j-(count-1)/2);shot(bx+q*12,by,q*spread,vy)}};
+  bossAttack(t,bx,by,v*boss.attackPower,tx,shot,fan); }
+ }
+ else if(nextBossAt&&t>=nextBossAt){nextBossAt=0;newBoss()}
+ shots.forEach(s=>{s.x+=s.vx;s.y+=s.vy});shots=shots.filter(s=>s.y>-20&&s.x>-15&&s.x<W+15);
+ if(boss)for(let s of shots){for(let p of boss.parts){if(p.alive&&Math.abs(s.x-(boss.x+p.x))<17&&Math.abs(s.y-(boss.y-19))<28){s.y=-40;p.hp-=s.power||1;burst(boss.x+p.x,boss.y,'#ffcb75');playSfx('impact');if(p.hp<=0){p.alive=false;score+=100;playSfx('break');burst(boss.x+p.x,boss.y,'#ff9b56');if(!boss.dropped&&drops.length===0&&Math.random()<.15){drops.push({x:clamp(boss.x+p.x,16,464),y:boss.y+20,type:Math.random()<.5?0:1});boss.dropped=true;say('Редкий буст! Лови его!')}}break}}}
+ enemy.forEach(s=>{s.x+=s.vx;s.y+=s.vy;if(player.invuln<performance.now() && Math.abs(s.x-player.x)<22 && Math.abs(s.y-player.y)<24){s.y=H+40;lives--;player.invuln=performance.now()+1100;damageFlash=performance.now()+420;playDamageSound();burst(player.x,player.y,'#ff3d4f');if(lives<=0){over=true;say('КОРАБЛЬ УНИЧТОЖЕН! Нажми «ЗАНОВО».')}else say('ПОПАДАНИЕ! Осталось жизней: '+lives)}});enemy=enemy.filter(s=>s.y<H+20);
+ drops.forEach(d=>{d.y+=dt*.12;if(Math.abs(d.x-player.x)<25&&Math.abs(d.y-player.y)<28){boostUntil=performance.now()+9000;boostType=d.type;playSfx('pickup');if(d.type===0){weapon=3;say('Временный бонус: усиленная атака на 9 секунд!')}else{weapon=2;spread=2;say('Временный бонус: веерный залп на 9 секунд!')}d.y=H+60;burst(player.x,player.y,'#70e5ed')}});drops=drops.filter(d=>d.y<H+20);
+ if(boss&&boss.parts.every(p=>!p.alive)){playSfx('break');score+=500;burst(boss.x,boss.y,'#f5c66a');boss=null;level++;nextBossAt=t+1000;say('Победа! Следующий босс уже на подходе!')}
+ fx.forEach(p=>{p.x+=p.vx;p.y+=p.vy;p.life--});fx=fx.filter(p=>p.life>0);
+ }
+ ui();draw();requestAnimationFrame(frame)}
+function start(){level=1;score=0;lives=3;weapon=1;spread=0;boostUntil=0;boostType=null;shots=[];enemy=[];drops=[];fx=[];wake=[];player.x=240;player.tilt=0;player.invuln=0;player.lastDir=0;player.wakeAt=0;damageFlash=0;$('toast').classList.remove('show');boss=null;over=false;paused=false;nextBossAt=0;newBoss();ui();$('pause').textContent='ПАУЗА';last=performance.now()}
+function bind(id,k){let el=$(id);el.addEventListener('pointerdown',e=>{e.preventDefault();held[k]=true;el.setPointerCapture(e.pointerId)});['pointerup','pointercancel','lostpointercapture'].forEach(ev=>el.addEventListener(ev,()=>held[k]=false))}
+bind('left','left');bind('right','right');bind('fire','fire');
+async function startMusic(){
+ try{
+  const AudioCtor=window.AudioContext||window.webkitAudioContext;
+  if(!AudioCtor){say('В этом браузере нет поддержки аудио.');return}
+  if(!audioCtx)audioCtx=new AudioCtor();
+  // resume() вызывается непосредственно из нажатия кнопки — это важно для мобильных браузеров.
+  const resumeResult=audioCtx.resume();
+  if(resumeResult&&typeof resumeResult.then==='function')await resumeResult;
+  if(audioCtx.state!=='running'){say('Звук заблокирован браузером. Нажми ♫ ещё раз.');return}
+  if(musicTimer)clearTimeout(musicTimer);
+  if(musicMaster){try{musicMaster.disconnect()}catch(e){}}
+  musicMaster=audioCtx.createGain();
+  musicMaster.gain.value=.72;
+  musicMaster.connect(audioCtx.destination);
+  const masterFilter=audioCtx.createBiquadFilter();
+  masterFilter.type='lowpass';masterFilter.frequency.value=4200;masterFilter.Q.value=.35;
+  // All musical voices pass through a gentle filter and master volume.
+  const musicBus=audioCtx.createGain();musicBus.gain.value=.9;
+  masterFilter.connect(musicBus);musicBus.connect(musicMaster);
+
+  musicOn=true;musicStep=0;
+  $('music').textContent='♫ МУЗЫКА: ВКЛ';$('music').classList.add('music-on');
+  const bpm=78,beat=60/bpm;
+  const roots=[110,98,130.81,87.31,116.54,98];
+  const chordSets=[[1,1.25,1.5,2],[1,1.2,1.5,2],[1,1.25,1.498,2],[1,1.189,1.498,2],[1,1.26,1.5,2],[1,1.2,1.5,2]];
+  function voice(freq,when,duration,volume,wave='sine',attack=.35){
+   if(!musicOn||!Number.isFinite(freq)||freq<25||freq>5000)return;
+   const osc=audioCtx.createOscillator(),gain=audioCtx.createGain(),filter=audioCtx.createBiquadFilter();
+   osc.type=wave;osc.frequency.setValueAtTime(freq,when);
+   filter.type='lowpass';filter.frequency.setValueAtTime(wave==='triangle'?2600:1900,when);
+   gain.gain.setValueAtTime(.0001,when);
+   gain.gain.linearRampToValueAtTime(volume,when+attack);
+   gain.gain.setValueAtTime(volume,when+Math.max(attack+.02,duration-.45));
+   gain.gain.exponentialRampToValueAtTime(.0001,when+duration);
+   osc.connect(filter);filter.connect(gain);gain.connect(masterFilter);
+   osc.start(when);osc.stop(when+duration+.04);
+   osc.onended=()=>{try{osc.disconnect();filter.disconnect();gain.disconnect()}catch(e){}};
+  }
+  function playBar(){
+   if(!musicOn||!audioCtx||audioCtx.state!=='running')return;
+   const now=audioCtx.currentTime+.06,idx=musicStep%roots.length,root=roots[idx],chord=chordSets[idx];
+   // Warm sustained harmony, soft low bass and a changing, non-repeating plucked motif.
+   chord.forEach((r,i)=>voice(root*r,now,beat*3.8,i===0?.075:.045,i===3?'triangle':'sine',.65));
+   voice(root/2,now,beat*3.6,.105,'triangle',.45);
+   voice(root*1.5,now+beat*1.7,beat*1.7,.035,'sine',.5);
+   const scale=[0,2,4,7,9,12],phrase=[];
+   for(let i=0;i<4;i++){
+    const step=Math.floor(Math.random()*8),semi=scale[Math.floor(Math.random()*scale.length)];
+    phrase.push({step,semi});
+   }
+   phrase.sort((a,b)=>a.step-b.step);
+   phrase.forEach((n,i)=>{
+    const f=root*2*Math.pow(2,n.semi/12);
+    voice(f,now+n.step*beat*.5,beat*(.55+Math.random()*.65),.045+(i%2)*.012,'triangle',.025);
+   });
+   // Quiet pulse gives the track movement without a harsh 8-bit beat.
+   voice(55,now,beat*.8,.035,'sine',.08);
+   if(musicStep%2===1)voice(82.4,now+beat*2,beat*.65,.022,'sine',.12);
+   musicStep++;
+   musicTimer=setTimeout(playBar,beat*4*1000);
+  }
+  // A short, clearly audible opening chord confirms that playback has started.
+  [220,277.18,329.63,440].forEach((f,i)=>voice(f,audioCtx.currentTime+.03,1.8,.055,'sine',.2));
+  playBar();
+ }catch(err){
+  musicOn=false;
+  $('music').textContent='♫ МУЗЫКА: ВЫКЛ';$('music').classList.remove('music-on');
+  say('Не удалось включить звук. Проверь громкость и нажми ещё раз.');
+ }
+}
+function stopMusic(){
+ musicOn=false;if(musicTimer)clearTimeout(musicTimer);
+ if(musicMaster&&audioCtx){
+  try{musicMaster.gain.cancelScheduledValues(audioCtx.currentTime);musicMaster.gain.setTargetAtTime(0,audioCtx.currentTime,.12)}catch(e){}
+ }
+ $('music').textContent='♫ МУЗЫКА: ВЫКЛ';$('music').classList.remove('music-on');
+}
+$('music').onclick=()=>musicOn?stopMusic():startMusic();
+$('restart').onclick=start;$('pause').onclick=()=>{if(over)return;paused=!paused;$('pause').textContent=paused?'ПРОДОЛЖИТЬ':'ПАУЗА';last=performance.now()};
+window.addEventListener('keydown',e=>{if(['ArrowLeft','ArrowRight',' '].includes(e.key)){keys[e.key]=true;e.preventDefault()}});window.addEventListener('keyup',e=>keys[e.key]=false);
+start();requestAnimationFrame(frame);
+})();
+</script>
+</body></html>
